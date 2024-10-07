@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CFG File Viewer</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 0; 
+            padding: 0; 
+            display: flex; 
+            height: 100vh;
+        }
+        #fileList { 
+            width: 30%; 
+            overflow-y: auto; 
+            border-right: 1px solid #ccc; 
+            padding: 10px;
+        }
+        #fileList ul { 
+            list-style-type: none; 
+            padding: 0; 
+        }
+        #fileList li { 
+            cursor: pointer; 
+            padding: 5px; 
+            margin-bottom: 5px; 
+            background-color: #f4f4f4; 
+        }
+        #fileList li:hover { 
+            background-color: #e0e0e0; 
+        }
+        #fileContent { 
+            width: 70%; 
+            overflow-y: auto; 
+            padding: 10px; 
+            display: flex;
+            flex-direction: column;
+        }
+        #contentArea {
+            flex-grow: 1;
+            min-height: 300px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: monospace;
+        }
+        .button-container {
+            margin-top: 10px;
+        }
+        button {
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="fileList">
+        <h2>CFG Files</h2>
+        <ul></ul>
+    </div>
+    <div id="fileContent">
+        <h2>File Content</h2>
+        <textarea id="contentArea" readonly></textarea>
+        <div class="button-container">
+            <button id="editButton">Edit</button>
+            <button id="saveButton" style="display: none;">Save</button>
+        </div>
+    </div>
+
+    <script>
+        const fileList = document.querySelector('#fileList ul');
+        const contentArea = document.getElementById('contentArea');
+        const editButton = document.getElementById('editButton');
+        const saveButton = document.getElementById('saveButton');
+        let currentFile = '';
+
+        fetch('/api/cfgfiles')
+            .then(response => response.json())
+            .then(files => {
+                files.forEach(file => {
+                    const li = document.createElement('li');
+                    li.textContent = file;
+                    li.onclick = () => loadFileContent(file);
+                    fileList.appendChild(li);
+                });
+            })
+            .catch(error => console.error('Error:', error));
+
+        function loadFileContent(filename) {
+            currentFile = filename;
+            fetch(`/api/file/${encodeURIComponent(filename)}`)
+                .then(response => response.text())
+                .then(content => {
+                    contentArea.value = content;
+                    contentArea.readOnly = true;
+                    editButton.style.display = 'inline';
+                    saveButton.style.display = 'none';
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        editButton.addEventListener('click', () => {
+            contentArea.readOnly = false;
+            editButton.style.display = 'none';
+            saveButton.style.display = 'inline';
+        });
+
+        saveButton.addEventListener('click', () => {
+            fetch(`/api/save/${encodeURIComponent(currentFile)}`, {
+                method: 'POST',
+                body: contentArea.value,
+                headers: {
+                    'Content-Type': 'text/plain'
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => { throw new Error(text) });
+                }
+                return response.text();
+            })
+            .then(result => {
+                alert(result);
+                contentArea.readOnly = true;
+                editButton.style.display = 'inline';
+                saveButton.style.display = 'none';
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert(`Error saving file: ${error.message}`);
+            });
+        });
+    </script>
+</body>
+</html>
+
