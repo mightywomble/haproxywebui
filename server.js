@@ -2,12 +2,12 @@ const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
 const { exec } = require('child_process');
+const config = require('./config');
 
 const app = express();
-const PORT = 3300;
 
-let ROOT_DIR = '/home/david/code/home/reverseproxy';
-let CONF_D_DIR = '/home/david/code/home/reverseproxy/conf.d';
+let ROOT_DIR = config.ROOT_DIR;
+let CONF_D_DIR = config.CONF_D_DIR;
 
 async function getCfgFiles(dir, fileList = []) {
     console.log(`Scanning directory: ${dir}`);
@@ -89,15 +89,29 @@ app.get('/api/settings', (req, res) => {
     });
 });
 
-app.post('/api/settings', (req, res) => {
+app.post('/api/settings', async (req, res) => {
     const { haproxyPath, confdPath } = req.body;
     ROOT_DIR = haproxyPath;
     CONF_D_DIR = confdPath;
-    res.json({ success: true });
+    
+    // Update the config file
+    const updatedConfig = `module.exports = {
+    ROOT_DIR: '${haproxyPath}',
+    CONF_D_DIR: '${confdPath}',
+    PORT: ${config.PORT}
+};`;
+
+    try {
+        await fs.writeFile('./config.js', updatedConfig, 'utf8');
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error updating config file:', error);
+        res.status(500).json({ error: 'Failed to update configuration' });
+    }
 });
 
 app.use(express.static('public'));
 
-app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+app.listen(config.PORT, () => {
+    console.log(`Server running on http://localhost:${config.PORT}`);
 });

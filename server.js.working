@@ -70,7 +70,7 @@ app.post('/api/save/:filename', async (req, res) => {
 app.post('/api/testconfig', (req, res) => {
     const filename = req.body.filename;
     const filePath = path.join(ROOT_DIR, filename);
-    
+
     console.log(`Testing configuration file: ${filePath}`);
     exec(`haproxy -f ${filePath} -f ${CONF_D_DIR} -c`, (error, stdout, stderr) => {
         if (error) {
@@ -78,7 +78,7 @@ app.post('/api/testconfig', (req, res) => {
             return res.status(500).send(`Error testing config: ${stderr}`);
         }
         console.log('Configuration test output:', stdout);
-        res.send(stdout || 'Configuration test passed');
+        res.send(stdout || stderr || 'Configuration test passed');
     });
 });
 
@@ -101,4 +101,3 @@ app.use(express.static('public'));
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
 });
-
