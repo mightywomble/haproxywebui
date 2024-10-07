@@ -33,12 +33,34 @@
         }
         #fileContent { 
             width: 70%; 
-            overflow-y: auto; 
-            padding: 10px; 
+            display: flex;
+            flex-direction: column;
         }
-        pre { 
-            white-space: pre-wrap; 
-            word-wrap: break-word; 
+        .button-container {
+            padding: 10px;
+        }
+        button {
+            margin-right: 10px;
+        }
+        #contentWrapper {
+            display: flex;
+            flex-direction: column;
+            height: calc(100% - 50px); /* Adjust based on button container height */
+        }
+        #contentArea {
+            flex: 7;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: monospace;
+            padding: 10px;
+            overflow-y: auto;
+        }
+        #resultsArea {
+            flex: 3;
+            border-top: 1px solid #ccc;
+            padding: 10px;
+            overflow-y: auto;
+            background-color: #f9f9f9;
         }
     </style>
 </head>
@@ -48,34 +70,114 @@
         <ul></ul>
     </div>
     <div id="fileContent">
-        <h2>File Content</h2>
-        <pre></pre>
+        <div class="button-container">
+            <button id="editButton">Edit</button>
+            <button id="saveButton" style="display: none;">Save</button>
+            <button id="testConfigButton">Test Config</button>
+        </div>
+        <div id="contentWrapper">
+            <textarea id="contentArea" readonly></textarea>
+            <div id="resultsArea"></div>
+        </div>
     </div>
 
     <script>
         const fileList = document.querySelector('#fileList ul');
-        const fileContent = document.querySelector('#fileContent pre');
+        const contentArea = document.getElementById('contentArea');
+        const resultsArea = document.getElementById('resultsArea');
+        const editButton = document.getElementById('editButton');
+        const saveButton = document.getElementById('saveButton');
+        const testConfigButton = document.getElementById('testConfigButton');
+        let currentFile = '';
 
         fetch('/api/cfgfiles')
-            .then(response => response.json())
-            .then(files => {
-                files.forEach(file => {
-                    const li = document.createElement('li');
-                    li.textContent = file;
-                    li.onclick = () => loadFileContent(file);
-                    fileList.appendChild(li);
-                });
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
             })
-            .catch(error => console.error('Error:', error));
+            .then(files => {
+                console.log('Received files:', files);
+                if (files.length === 0) {
+                    console.log('No .cfg files found');
+                    fileList.innerHTML = '<li>No .cfg files found</li>';
+                } else {
+                    files.forEach(file => {
+                        const li = document.createElement('li');
+                        li.textContent = file;
+                        li.onclick = () => loadFileContent(file);
+                        fileList.appendChild(li);
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching cfg files:', error);
+                fileList.innerHTML = '<li>Error loading files</li>';
+            });
 
         function loadFileContent(filename) {
+            currentFile = filename;
             fetch(`/api/file/${encodeURIComponent(filename)}`)
                 .then(response => response.text())
                 .then(content => {
-                    fileContent.textContent = content;
+                    contentArea.value = content;
+                    contentArea.readOnly = true;
+                    editButton.style.display = 'inline';
+                    saveButton.style.display = 'none';
                 })
                 .catch(error => console.error('Error:', error));
         }
+
+        editButton.addEventListener('click', () => {
+            contentArea.readOnly = false;
+            editButton.style.display = 'none';
+            saveButton.style.display = 'inline';
+        });
+
+        saveButton.addEventListener('click', () => {
+            fetch(`/api/save/${encodeURIComponent(currentFile)}`, {
+                method: 'POST',
+                body: contentArea.value,
+                headers: {
+                    'Content-Type': 'text/plain'
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => { throw new Error(text) });
+                }
+                return response.text();
+            })
+            .then(result => {
+                alert(result);
+                contentArea.readOnly = true;
+                editButton.style.display = 'inline';
+                saveButton.style.display = 'none';
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert(`Error saving file: ${error.message}`);
+            });
+        });
+
+        testConfigButton.addEventListener('click', () => {
+            fetch('/api/testconfig', {
+                method: 'POST',
+                body: JSON.stringify({ filename: currentFile }),
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.text())
+            .then(result => {
+                resultsArea.textContent = result;
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                resultsArea.textContent = `Error testing config: ${error.message}`;
+            });
+        });
     </script>
 </body>
 </html>
