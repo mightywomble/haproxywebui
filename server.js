@@ -9,10 +9,22 @@ const app = express();
 let ROOT_DIR = config.ROOT_DIR;
 let CONF_D_DIR = config.CONF_D_DIR;
 
+async function validateDirectories() {
+    try {
+        await fs.access(ROOT_DIR, fs.constants.R_OK);
+        await fs.access(CONF_D_DIR, fs.constants.R_OK);
+        console.log('Directories validated successfully');
+    } catch (error) {
+        console.error('Directory validation failed:', error);
+        process.exit(1);
+    }
+}
+
 async function getCfgFiles(dir, fileList = []) {
     console.log(`Scanning directory: ${dir}`);
     try {
         const files = await fs.readdir(dir);
+        console.log(`Files in ${dir}:`, files);
         for (const file of files) {
             const filePath = path.join(dir, file);
             const stat = await fs.stat(filePath);
@@ -31,12 +43,17 @@ async function getCfgFiles(dir, fileList = []) {
 
 app.use(express.json());
 app.use(express.text());
+app.use(express.static('public'));
 
 app.get('/api/cfgfiles', async (req, res) => {
     try {
         console.log('Fetching cfg files...');
         const files = await getCfgFiles(ROOT_DIR);
         console.log('Found files:', files);
+        if (files.length === 0) {
+            console.log('No .cfg files found');
+            return res.status(404).json({ message: 'No configuration files found' });
+        }
         res.json(files);
     } catch (error) {
         console.error('Error reading directory:', error);
@@ -47,30 +64,49 @@ app.get('/api/cfgfiles', async (req, res) => {
 app.get('/api/file/:filename', async (req, res) => {
     const filePath = path.join(ROOT_DIR, req.params.filename);
     try {
+        await fs.access(filePath, fs.constants.R_OK);
         const content = await fs.readFile(filePath, 'utf8');
         res.send(content);
     } catch (error) {
         console.error('Error reading file:', error);
-        res.status(404).send('File not found: ' + error.message);
+        if (error.code === 'ENOENT') {
+            res.status(404).send('File not found: ' + error.message);
+        } else {
+            res.status(500).send('Error reading file: ' + error.message);
+        }
     }
 });
 
 app.post('/api/save/:filename', async (req, res) => {
     const filePath = path.join(ROOT_DIR, req.params.filename);
     console.log('Attempting to save file:', filePath);
+    console.log('File content:', req.body);
     try {
+        await fs.access(path.dirname(filePath), fs.constants.W_OK);
         await fs.writeFile(filePath, req.body);
+        console.log('File saved successfully:', filePath);
         res.send('File saved successfully');
     } catch (error) {
         console.error('Error saving file:', error);
-        res.status(500).send(`Error saving file: ${error.message}`);
+        console.error('Error details:', {
+            code: error.code,
+            message: error.message,
+            stack: error.stack
+        });
+
+        if (error.code === 'ENOENT') {
+            res.status(404).send(`Error saving file: Directory not found - ${error.message}`);
+        } else if (error.code === 'EACCES') {
+            res.status(403).send(`Error saving file: Permission denied - ${error.message}`);
+        } else {
+            res.status(500).send(`Error saving file: ${error.message}`);
+        }
     }
 });
 
 app.post('/api/testconfig', (req, res) => {
     const filename = req.body.filename;
     const filePath = path.join(ROOT_DIR, filename);
-
     console.log(`Testing configuration file: ${filePath}`);
     exec(`haproxy -f ${filePath} -f ${CONF_D_DIR} -c`, (error, stdout, stderr) => {
         if (error) {
@@ -93,14 +129,11 @@ app.post('/api/settings', async (req, res) => {
     const { haproxyPath, confdPath } = req.body;
     ROOT_DIR = haproxyPath;
     CONF_D_DIR = confdPath;
-    
-    // Update the config file
     const updatedConfig = `module.exports = {
     ROOT_DIR: '${haproxyPath}',
     CONF_D_DIR: '${confdPath}',
     PORT: ${config.PORT}
 };`;
-
     try {
         await fs.writeFile('./config.js', updatedConfig, 'utf8');
         res.json({ success: true });
@@ -110,8 +143,68 @@ app.post('/api/settings', async (req, res) => {
     }
 });
 
-app.use(express.static('public'));
+app.post('/api/template', async (req, res) => {
+    console.log('Received template data:', req.body);
+    const { name, content } = req.body;
+    const filePath = path.join(ROOT_DIR, `${name}.cfg`);
 
-app.listen(config.PORT, () => {
-    console.log(`Server running on http://localhost:${config.PORT}`);
+    console.log('Attempting to create template:', filePath);
+    try {
+        await fs.writeFile(filePath, content);
+        console.log('Template created successfully:', filePath);
+        res.json({ success: true, message: 'Template created successfully' });
+    } catch (error) {
+        console.error('Error creating template:', error);
+        console.error('Error details:', {
+            code: error.code,
+            message: error.message,
+            stack: error.stack
+        });
+        res.status(500).json({ success: false, error: `Error creating template: ${error.message}` });
+    }
+});
+
+app.post('/api/addservice', async (req, res) => {
+    console.log('Received service data:', req.body);
+    const { serviceName, internalIP, internalPort, publicURL } = req.body;
+    
+    try {
+        const configContent = `
+frontend ${serviceName}
+    bind *:80
+    acl ${serviceName}_host hdr(host) -i ${publicURL}
+    use_backend ${serviceName}_backend if ${serviceName}_host
+
+backend ${serviceName}_backend
+    server ${serviceName}_server ${internalIP}:${internalPort}
+`;
+        const filePath = path.join(CONF_D_DIR, `${serviceName}.cfg`);
+        await fs.writeFile(filePath, configContent);
+        
+        console.log('Service added successfully:', filePath);
+        res.json({ success: true, message: 'Service added successfully' });
+    } catch (error) {
+        console.error('Error adding service:', error);
+        console.error('Error details:', {
+            code: error.code,
+            message: error.message,
+            stack: error.stack
+        });
+        res.status(500).json({ success: false, error: `Error adding service: ${error.message}` });
+    }
+});
+
+app.use((err, req, res, next) => {
+    console.error(err.stack);
+    res.status(500).json({ error: 'Something broke!', details: err.message });
+});
+
+const PORT = config.PORT || 3300;
+
+validateDirectories().then(() => {
+    app.listen(PORT, () => {
+        console.log(`Server is running on port ${PORT}`);
+    });
+}).catch(error => {
+    console.error('Failed to start server:', error);
 });

@@ -3,41 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CFG File Viewer</title>
+    <title>HAProxy Config Viewer</title>
     <style>
-        body { 
-            font-family: Arial, sans-serif; 
-            margin: 0; 
-            padding: 0; 
-            display: flex; 
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
             height: 100vh;
+            overflow-x: hidden;
         }
-        #fileList { 
-            width: 30%; 
-            overflow-y: auto; 
-            border-right: 1px solid #ccc; 
+        #fileList {
+            width: 30%;
+            overflow-y: auto;
+            border-right: 1px solid #ccc;
             padding: 10px;
         }
-        #fileList ul { 
-            list-style-type: none; 
-            padding: 0; 
+        #fileList ul {
+            list-style-type: none;
+            padding: 0;
         }
-        #fileList li { 
-            cursor: pointer; 
-            padding: 5px; 
-            margin-bottom: 5px; 
-            background-color: #f4f4f4; 
+        #fileList li {
+            cursor: pointer;
+            padding: 5px;
+            margin-bottom: 5px;
+            background-color: #f4f4f4;
         }
-        #fileList li:hover { 
-            background-color: #e0e0e0; 
+        #fileList li:hover {
+            background-color: #e0e0e0;
         }
-        #fileContent { 
-            width: 70%; 
+        #fileContent {
+            width: 70%;
             display: flex;
             flex-direction: column;
         }
         .button-container {
             padding: 10px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .left-buttons {
+            display: flex;
         }
         button {
             margin-right: 10px;
@@ -45,7 +51,7 @@
         #contentWrapper {
             display: flex;
             flex-direction: column;
-            height: calc(100% - 50px); /* Adjust based on button container height */
+            height: calc(100% - 50px);
         }
         #contentArea {
             flex: 7;
@@ -62,6 +68,50 @@
             overflow-y: auto;
             background-color: #f9f9f9;
         }
+        #resultsArea ul {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+        }
+        #resultsArea li {
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+            font-family: monospace;
+        }
+        #resultsArea li:last-child {
+            border-bottom: none;
+        }
+        .config {
+            color: #FF9800;  /* Orange */
+        }
+        .error {
+            color: #F44336;  /* Red */
+            font-weight: bold;
+        }
+        .notice {
+            color: #4CAF50;  /* Green */
+        }
+        .warning {
+            color: #F44336;  /* Red */
+        }
+        #settingsPage {
+            position: fixed;
+            top: 0;
+            right: -100%;
+            width: 100%;
+            height: 100%;
+            background-color: white;
+            transition: right 0.3s ease-in-out;
+            z-index: 1000;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        #settingsPage.open {
+            right: 0;
+        }
+        #backButton {
+            margin-bottom: 20px;
+        }
     </style>
 </head>
 <body>
@@ -71,14 +121,26 @@
     </div>
     <div id="fileContent">
         <div class="button-container">
-            <button id="editButton">Edit</button>
-            <button id="saveButton" style="display: none;">Save</button>
-            <button id="testConfigButton">Test Config</button>
+            <div class="left-buttons">
+                <button id="editButton">Edit</button>
+                <button id="saveButton" style="display: none;">Save</button>
+                <button id="testConfigButton">Test Config</button>
+            </div>
+            <button id="settingsButton">Settings</button>
         </div>
         <div id="contentWrapper">
             <textarea id="contentArea" readonly></textarea>
             <div id="resultsArea"></div>
         </div>
+    </div>
+    <div id="settingsPage">
+        <button id="backButton">Back</button>
+        <h2>Settings</h2>
+        <label for="haproxyPath">HAProxy Config Path:</label>
+        <input type="text" id="haproxyPath" name="haproxyPath"><br><br>
+        <label for="confdPath">conf.d Folder Path:</label>
+        <input type="text" id="confdPath" name="confdPath"><br><br>
+        <button id="saveSettings">Save Settings</button>
     </div>
 
     <script>
@@ -88,6 +150,10 @@
         const editButton = document.getElementById('editButton');
         const saveButton = document.getElementById('saveButton');
         const testConfigButton = document.getElementById('testConfigButton');
+        const settingsButton = document.getElementById('settingsButton');
+        const settingsPage = document.getElementById('settingsPage');
+        const backButton = document.getElementById('backButton');
+        const saveSettingsButton = document.getElementById('saveSettings');
         let currentFile = '';
 
         fetch('/api/cfgfiles')
@@ -171,11 +237,62 @@
             })
             .then(response => response.text())
             .then(result => {
-                resultsArea.textContent = result;
+                const lines = result.split('\n');
+                const formattedResult = lines.map(line => {
+                    let className = 'config';  // Default class
+                    if (line.includes('ERROR') || line.includes('Error')) {
+                        className = 'error';
+                    } else if (line.includes('NOTICE')) {
+                        className = 'notice';
+                    } else if (line.includes('WARNING')) {
+                        className = 'warning';
+                    } else if (line.includes('ALERT')) {
+                        className = 'error';  // Treating ALERT as error
+                    }
+                    return `<li class="${className}">${line}</li>`;
+                }).join('');
+                resultsArea.innerHTML = `<ul>${formattedResult}</ul>`;
             })
             .catch(error => {
                 console.error('Error:', error);
-                resultsArea.textContent = `Error testing config: ${error.message}`;
+                resultsArea.innerHTML = `<ul><li class="error">Error testing config: ${error.message}</li></ul>`;
+            });
+        });
+
+        settingsButton.addEventListener('click', () => {
+            settingsPage.classList.add('open');
+            fetch('/api/settings')
+                .then(response => response.json())
+                .then(settings => {
+                    document.getElementById('haproxyPath').value = settings.haproxyPath;
+                    document.getElementById('confdPath').value = settings.confdPath;
+                });
+        });
+
+        backButton.addEventListener('click', () => {
+            settingsPage.classList.remove('open');
+        });
+
+        saveSettingsButton.addEventListener('click', () => {
+            const settings = {
+                haproxyPath: document.getElementById('haproxyPath').value,
+                confdPath: document.getElementById('confdPath').value
+            };
+            fetch('/api/settings', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(settings),
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert('Settings saved successfully');
+                settingsPage.classList.remove('open');
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+                alert('Error saving settings');
             });
         });
     </script>
