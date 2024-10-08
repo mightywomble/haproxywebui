@@ -127,6 +127,7 @@
                 <button id="addServiceButton">Add Service</button>
                 <button id="testConfigButton">Test Config</button>
                 <button onclick="checkHAProxyStatus()">HAProxy Status</button>
+                <button id="haproxyToggleBtn" onclick="toggleHAProxy()">HAProxy Start/Stop</button>
             </div>
             <button id="settingsButton">Settings</button>
         </div>
@@ -287,12 +288,35 @@
   try {
     const response = await fetch('/api/haproxy-status');
     const data = await response.json();
-    document.getElementById('resultsArea').textContent = `HAProxy Status: ${data.status}`;
+    haproxyStatus = data.status;
+    updateHAProxyButton();
+    document.getElementById('resultsArea').textContent = `HAProxy Status: ${haproxyStatus}`;
   } catch (error) {
     console.error('Error:', error);
     document.getElementById('resultsArea').textContent = 'Error checking HAProxy status';
   }
 }
+
+function updateHAProxyButton() {
+  const btn = document.getElementById('haproxyToggleBtn');
+  btn.textContent = haproxyStatus === 'active' ? 'HAProxy Stop' : 'HAProxy Start';
+}
+
+async function toggleHAProxy() {
+  const action = haproxyStatus === 'active' ? 'stop' : 'start';
+  try {
+    const response = await fetch(`/api/haproxy-${action}`, { method: 'POST' });
+    const data = await response.json();
+    document.getElementById('resultsArea').textContent = `HAProxy ${action} result: ${data.result}`;
+    await checkHAProxyStatus();
+  } catch (error) {
+    console.error('Error:', error);
+    document.getElementById('resultsArea').textContent = `Error ${action}ing HAProxy`;
+  }
+}
+
+
+
         settingsButton.addEventListener('click', () => {
             settingsPage.classList.add('open');
             fetch('/api/settings')
@@ -367,6 +391,8 @@
                 alert('Error adding service');
             });
         });
+        // Call this function when the page loads to set the initial button state
+checkHAProxyStatus();
     </script>
 </body>
 </html>
