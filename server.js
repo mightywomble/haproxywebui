@@ -4,6 +4,8 @@ const path = require('path');
 const { exec } = require('child_process');
 const config = require('./config');
 const { getHAProxyStatus, startHAProxy, stopHAProxy } = require('./haproxyStatus');
+const { analyzeConfig } = require('./openai');
+
 
 const app = express();
 
@@ -246,6 +248,18 @@ app.get('/api/haproxy-status', async (req, res) => {
     } catch (error) {
       console.error('Error stopping HAProxy:', error);
       res.status(500).json({ error: 'Failed to stop HAProxy' });
+    }
+  });
+
+
+  app.post('/api/analyze-config', async (req, res) => {
+    const { configContent } = req.body;
+    try {
+      const analysis = await analyzeConfig(configContent);
+      res.json({ analysis });
+    } catch (error) {
+      console.error('Error analyzing config:', error);
+      res.status(500).json({ error: 'Failed to analyze configuration' });
     }
   });
 

@@ -129,6 +129,7 @@
                 <button onclick="checkHAProxyStatus()">HAProxy Status</button>
                 <button id="haproxyToggleBtn" onclick="toggleHAProxy()">HAProxy Start/Stop</button>
             </div>
+            <button id="aiCheckBtn" style="display: none;">AI Check</button>
             <button id="settingsButton">Settings</button>
         </div>
         <div id="contentWrapper">
@@ -207,18 +208,19 @@
                 fileList.innerHTML = '<li>Error loading files</li>';
             });
 
-        function loadFileContent(filename) {
-            currentFile = filename;
-            fetch(`/api/file/${encodeURIComponent(filename)}`)
-                .then(response => response.text())
-                .then(content => {
-                    contentArea.value = content;
-                    contentArea.readOnly = true;
-                    editButton.style.display = 'inline';
-                    saveButton.style.display = 'none';
-                })
-                .catch(error => console.error('Error:', error));
-        }
+    function loadFileContent(filename) {
+        currentFile = filename;
+        fetch(`/api/file/${encodeURIComponent(filename)}`)
+            .then(response => response.text())
+            .then(content => {
+                contentArea.value = content;
+                contentArea.readOnly = true;
+                editButton.style.display = 'inline';
+                saveButton.style.display = 'none';
+                showAICheckButton(); // Add this line to show the AI Check button
+            })
+            .catch(error => console.error('Error:', error));
+    }
 
         editButton.addEventListener('click', () => {
             contentArea.readOnly = false;
@@ -361,6 +363,7 @@ async function toggleHAProxy() {
             addServicePage.classList.add('open');
         });
 
+       
         addServiceForm.addEventListener('submit', (e) => {
             e.preventDefault();
             const serviceName = document.getElementById('serviceName').value;
@@ -391,9 +394,44 @@ async function toggleHAProxy() {
                 alert('Error adding service');
             });
         });
+
+    function showAICheckButton() {
+        document.getElementById('aiCheckBtn').style.display = 'inline-block';
+    }
+
+    function hideAICheckButton() {
+        document.getElementById('aiCheckBtn').style.display = 'none';
+    }
+
+    async function analyzeConfig() {
+        const configContent = contentArea.value;
+        try {
+            const response = await fetch('/api/analyze-config', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ configContent }),
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to analyze configuration');
+            }
+
+            const data = await response.json();
+            alert('AI Analysis:\n\n' + data.analysis);
+        } catch (error) {
+            console.error('Error analyzing config:', error);
+            alert('Error analyzing configuration. Please try again.');
+        }
+    }
+
+
+
+    document.getElementById('aiCheckBtn').addEventListener('click', analyzeConfig);
+
         // Call this function when the page loads to set the initial button state
 checkHAProxyStatus();
     </script>
 </body>
 </html>
-
