@@ -82,19 +82,19 @@
             border-bottom: none;
         }
         .config {
-            color: #FF9800;  /* Orange */
+            color: #4CAF50;  /* Green */
         }
         .error {
             color: #F44336;  /* Red */
             font-weight: bold;
         }
         .notice {
-            color: #4CAF50;  /* Green */
+            color: #FF9800;  /* Orange */
         }
         .warning {
-            color: #F44336;  /* Red */
+            color: #4CAF50;  /* Green */
         }
-        #settingsPage {
+        #settingsPage, #addServicePage {
             position: fixed;
             top: 0;
             right: -100%;
@@ -106,10 +106,10 @@
             padding: 20px;
             box-sizing: border-box;
         }
-        #settingsPage.open {
+        #settingsPage.open, #addServicePage.open {
             right: 0;
         }
-        #backButton {
+        .backButton {
             margin-bottom: 20px;
         }
     </style>
@@ -124,7 +124,9 @@
             <div class="left-buttons">
                 <button id="editButton">Edit</button>
                 <button id="saveButton" style="display: none;">Save</button>
+                <button id="addServiceButton">Add Service</button>
                 <button id="testConfigButton">Test Config</button>
+                <button onclick="checkHAProxyStatus()">HAProxy Status</button>
             </div>
             <button id="settingsButton">Settings</button>
         </div>
@@ -134,13 +136,32 @@
         </div>
     </div>
     <div id="settingsPage">
-        <button id="backButton">Back</button>
+        <button class="backButton">Back</button>
         <h2>Settings</h2>
         <label for="haproxyPath">HAProxy Config Path:</label>
         <input type="text" id="haproxyPath" name="haproxyPath"><br><br>
         <label for="confdPath">conf.d Folder Path:</label>
         <input type="text" id="confdPath" name="confdPath"><br><br>
         <button id="saveSettings">Save Settings</button>
+    </div>
+    <div id="addServicePage">
+        <button class="backButton">Back</button>
+        <h2>Add New Service</h2>
+        <form id="addServiceForm">
+            <label for="serviceName">Service Name:</label>
+            <input type="text" id="serviceName" required><br><br>
+            
+            <label for="internalIP">Internal IP:</label>
+            <input type="text" id="internalIP" required><br><br>
+            
+            <label for="internalPort">Internal Port:</label>
+            <input type="number" id="internalPort" required><br><br>
+            
+            <label for="publicURL">Public URL:</label>
+            <input type="text" id="publicURL" required><br><br>
+            
+            <button type="submit">Add Service</button>
+        </form>
     </div>
 
     <script>
@@ -152,7 +173,10 @@
         const testConfigButton = document.getElementById('testConfigButton');
         const settingsButton = document.getElementById('settingsButton');
         const settingsPage = document.getElementById('settingsPage');
-        const backButton = document.getElementById('backButton');
+        const addServiceButton = document.getElementById('addServiceButton');
+        const addServicePage = document.getElementById('addServicePage');
+        const addServiceForm = document.getElementById('addServiceForm');
+        const backButtons = document.querySelectorAll('.backButton');
         const saveSettingsButton = document.getElementById('saveSettings');
         let currentFile = '';
 
@@ -259,6 +283,16 @@
             });
         });
 
+        async function checkHAProxyStatus() {
+  try {
+    const response = await fetch('/api/haproxy-status');
+    const data = await response.json();
+    document.getElementById('resultsArea').textContent = `HAProxy Status: ${data.status}`;
+  } catch (error) {
+    console.error('Error:', error);
+    document.getElementById('resultsArea').textContent = 'Error checking HAProxy status';
+  }
+}
         settingsButton.addEventListener('click', () => {
             settingsPage.classList.add('open');
             fetch('/api/settings')
@@ -269,8 +303,11 @@
                 });
         });
 
-        backButton.addEventListener('click', () => {
-            settingsPage.classList.remove('open');
+        backButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                settingsPage.classList.remove('open');
+                addServicePage.classList.remove('open');
+            });
         });
 
         saveSettingsButton.addEventListener('click', () => {
@@ -295,6 +332,42 @@
                 alert('Error saving settings');
             });
         });
+
+        addServiceButton.addEventListener('click', () => {
+            addServicePage.classList.add('open');
+        });
+
+        addServiceForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const serviceName = document.getElementById('serviceName').value;
+            const internalIP = document.getElementById('internalIP').value;
+            const internalPort = document.getElementById('internalPort').value;
+            const publicURL = document.getElementById('publicURL').value;
+
+            fetch('/api/addservice', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ serviceName, internalIP, internalPort, publicURL }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Service added successfully');
+                    addServicePage.classList.remove('open');
+                    // Refresh the file list
+                    location.reload();
+                } else {
+                    alert('Error adding service: ' + data.error);
+                }
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+                alert('Error adding service');
+            });
+        });
     </script>
 </body>
 </html>
+

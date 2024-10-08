@@ -3,6 +3,7 @@ const fs = require('fs').promises;
 const path = require('path');
 const { exec } = require('child_process');
 const config = require('./config');
+const { getHAProxyStatus, startHAProxy, stopHAProxy } = require('./haproxyStatus');
 
 const app = express();
 
@@ -217,6 +218,36 @@ backend ${serviceName}_backend
         res.status(500).json({ success: false, error: `Error adding service: ${error.message}` });
     }
 });
+
+app.get('/api/haproxy-status', async (req, res) => {
+    try {
+      const status = await getHAProxyStatus();
+      res.json({ status });
+    } catch (error) {
+      console.error('Error getting HAProxy status:', error);
+      res.status(500).json({ error: 'Failed to get HAProxy status' });
+    }
+  });
+  
+  app.post('/api/haproxy-start', async (req, res) => {
+    try {
+      const result = await startHAProxy();
+      res.json({ result });
+    } catch (error) {
+      console.error('Error starting HAProxy:', error);
+      res.status(500).json({ error: 'Failed to start HAProxy' });
+    }
+  });
+  
+  app.post('/api/haproxy-stop', async (req, res) => {
+    try {
+      const result = await stopHAProxy();
+      res.json({ result });
+    } catch (error) {
+      console.error('Error stopping HAProxy:', error);
+      res.status(500).json({ error: 'Failed to stop HAProxy' });
+    }
+  });
 
 app.use((err, req, res, next) => {
     console.error(err.stack);
