@@ -169,19 +169,43 @@ app.post('/api/addservice', async (req, res) => {
     const { serviceName, internalIP, internalPort, publicURL } = req.body;
     
     try {
-        const configContent = `
-frontend ${serviceName}
-    bind *:80
-    acl ${serviceName}_host hdr(host) -i ${publicURL}
-    use_backend ${serviceName}_backend if ${serviceName}_host
-
+        // Create backend configuration
+        const backendConfig = `
 backend ${serviceName}_backend
-    server ${serviceName}_server ${internalIP}:${internalPort}
+    mode  http
+    balance roundrobin
+    option forwardfor
+    http-reuse safe
+    server ${serviceName}_server ${internalIP}:${internalPort} check inter 5s fall 3 rise 2
+    timeout connect 10s
+    timeout server 30s
+    retries 3
 `;
-        const filePath = path.join(CONF_D_DIR, `${serviceName}.cfg`);
-        await fs.writeFile(filePath, configContent);
+        const backendFilePath = path.join(CONF_D_DIR, `${serviceName}.cfg`);
+        await fs.writeFile(backendFilePath, backendConfig);
         
-        console.log('Service added successfully:', filePath);
+        // Update frontend configuration
+        const frontendFilePath = path.join(CONF_D_DIR, '00-frontend.cfg');
+        let frontendContent = await fs.readFile(frontendFilePath, 'utf8');
+        
+        // Add ACL line
+        const aclLine = `    acl host_${serviceName} hdr(host) -i ${publicURL}`;
+        frontendContent = frontendContent.replace(
+            /# ACLs to match hostnames/,
+            `# ACLs to match hostnames\n${aclLine}`
+        );
+        
+        // Add use_backend line
+        const useBackendLine = `    use_backend ${serviceName}_backend if host_${serviceName}`;
+        frontendContent = frontendContent.replace(
+            /# Use backends based on hostname/,
+            `# Use backends based on hostname\n${useBackendLine}`
+        );
+        
+        await fs.writeFile(frontendFilePath, frontendContent);
+        
+        console.log('Service added successfully:', backendFilePath);
+        console.log('Frontend configuration updated:', frontendFilePath);
         res.json({ success: true, message: 'Service added successfully' });
     } catch (error) {
         console.error('Error adding service:', error);
